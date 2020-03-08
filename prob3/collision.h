@@ -7,7 +7,9 @@
 // prone and easier to read. Simple is good.
 //
 // The method steps through a parameterized trajectory and checks if the 
-// position is within the object at any point.
+// position is within the object at any point. To check if the point is in the
+// polygon, implement "raycasting algorithm" found here:
+// https://wrf.ecse.rpi.edu/Research/Short_Notes/pnpoly.html
 //
 // Kurt Hill March 7 2020
 // kurtkeyshill@gmail.com
@@ -95,56 +97,47 @@ bool Path::CheckPoint(Eigen::Vector3d v, Obstacle o) {
     return false;
 
   // Loop over the obstacle vertices
-  // - generate inequalities and check the point against them
+  // - Determine how many sides are crossed by a half line eminating from the
+  // test point
+  // - if the number is even, the point is outside, else inside
   // - need to loop back to the first point at the end for the final surface
-  //
-  // Previous point and sum of inequalities
-  int sum = 0;
+  
+  // Previous point and sum to keep track of the parity of the number of crosses
+  bool sum = 0;
   Eigen::Vector2d lastp;
   for(unsigned int i = 0; i <= o.vertices.size(); i++) {
 
     // Get the vertex (with the wrap around to the first element)
     Eigen::Vector2d p = o.vertices[i % o.vertices.size()];
-
-    // check inequalities
     const double x1 = lastp[0];
     const double y1 = lastp[1];
     const double x2 = p[0];
     const double y2 = p[1];
-    const double m = (y2-y1)/(x2-x1);
-    const double b = y1 - m*x1;
-    if(i > 0) {
-      if(x2 > x1)
-        sum += v[1] < (v[0] * m + b);
-      else if(x2 < x1)
-        sum += v[1] > (v[0] * m + b);
-      else {
-        if(y2 > y1)
-          sum += v[0] > x1;
-        else
-          sum += v[0] < x1;
-      }
-    }
+
+    if ( ((y1>v[1]) != (y2>v[1])) &&
+	       (v[0] < (x2-x1) * (v[1]-y1) / (y2-y1) + x1) )
+      sum = !sum;
+
     // Last step is to store the previous vertex
     lastp = p;
   }
-  // If all the inequalities are satisfied...
-  return sum == o.vertices.size();
+  // If the number of crossings is odd -> inside!
+  return sum;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Finds the cartesian point on the path given the angle parameter
 Eigen::Vector3d Path::GetPoint(double angle) {
   // shift angle into standard coodinates
-  double a =  90 - angle;
+  const double a =  90 - angle;
 
   // calculate cartesian coordinates
-  double x = _radius * cos(a*3.14159265359/180) + _center[0];
-  double y = _radius * sin(a*3.14159265359/180) + _center[1];
+  const double x = _radius * cos(a*3.14159265359/180) + _center[0];
+  const double y = _radius * sin(a*3.14159265359/180) + _center[1];
   // Interpolate the z coordinate
-  double m = (_end_height - _start_height)/(_end_angle - _start_angle);
-  double b = _start_height - m * _start_angle;
-  double z = angle * m + b;
+  const double m = (_end_height - _start_height)/(_end_angle - _start_angle);
+  const double b = _start_height - m * _start_angle;
+  const double z = angle * m + b;
 
   return Eigen::Vector3d(x, y, z);
 }
